@@ -31,15 +31,15 @@ public:
 //message class
 class MESSAGE {
 public:
-    string sender;
-    string receiver;
-    string message;
+    USER sender;
+    USER receiver;
+    string text;
     string id;
 
     MESSAGE() {
-        sender = "";
-        receiver = "";
-        message = "";
+        sender = USER();
+        receiver = USER();
+        text = "";
         id = "";
     }
 };
@@ -67,8 +67,13 @@ USER signup(string login = "") {
     USER user;
 
     if (login == "") {
-        cout << "Enter username: ";
+        cout << "Enter username (type 'cancel' to go back): ";
         cin >> login;
+        if (login == "cancel") {
+            //5 = user cancelled signup
+            user.exception = 5;
+            return user;
+        }
     }
     cout << "Enter password: ";
     cin >> password;
@@ -77,30 +82,28 @@ USER signup(string login = "") {
 
     fstream file("users.txt");
     while(getline(file, line)) {
-        user_data = split(line, ',');
+        user_data = split(line, ' ');
         if (user_data[0] == login) {
             cout << "Username already taken. Try again? (y/n):" << endl;
             char choice;
             cin >> choice;
             if (choice == 'y' || choice == 'Y') {
                 user = signup();
+                file.close();
                 return user;
             } else {
                 user.exception = 1;
                 //1 = username already taken
+                file.close();
                 return user;
             }
-            return user;
         }
     }
-    file.close();
-
     file.open("users.txt", ios::app);
-    file << login << " " << password_hash << " " << sha256(login) << endl;
+    file << login << " " << password_hash << " " << sha256(login) << 0 << endl;
     file.close();
 }
 
-//login function
 USER login() {
     string username;
     string password;
@@ -110,13 +113,18 @@ USER login() {
     vector<string> user_data;
     USER user;
 
-    cout << "Enter username: ";
+    cout << "Enter username (type 'cancel' to abort): ";
     cin >> username;
+    if (username == "cancel") {
+        //6 = user cancelled login
+        user.exception = 6;
+        return user;
+    }
     //check if username exists and offer to create new user
     ifstream user_file("users.txt");
     if(user_file.is_open()) {
         while(getline(user_file, line)) {
-            user_data = split(line, ',');
+            user_data = split(line, ' ');
             if(user_data[0] == username) {
                 cout << "Enter password: ";
                 cin >> password;
@@ -125,6 +133,8 @@ USER login() {
                     user.username = user_data[0];
                     user.password_hash = user_data[1];
                     user.id = user_data[2];
+                    user.exception = 0;
+                    user_file.close();
                     return user;
                 }
                 else {
@@ -133,65 +143,193 @@ USER login() {
                     cin >> choice;
                     if(choice == 'y' || choice == 'Y') {
                         user = login();
+                        user_file.close();
                         return user;
                     }
                     else {
                         user.exception = 2;
                         //2 = incorrect password
+                        user_file.close();
                         return user;
                     }
                 }
             }
-            else {
-                cout << "User does not exist" << endl;
-                cout << "Would you like to create a new user? (y/n): ";
-                char choice;
-                cin >> choice;
-                if(choice == 'y' || choice == 'Y') {
-                    user = signup(username);
-                    return user;
+
+        }
+        cout << "User does not exist" << endl;
+        cout << "Would you like to create a new user? (y/n): ";
+        char choice;
+        cin >> choice;
+        if(choice == 'y' || choice == 'Y') {
+            user = signup(username);
+            if (user.exception == 5) {
+                user = login();
+            }
+            user_file.close();
+            return user;
+        }
+        else {
+            user.exception = 3;
+            //3 = user does not exist
+            user_file.close();
+            return user;
+            }
+    }
+    else {
+        cout << "Unable to open file";
+        user.exception = 4;
+    }
+    user_file.close();
+    return user;
+}
+
+USER user_completion(USER user) {
+    string line;
+    vector<string> user_data;
+    vector<string> friends;
+    ifstream user_file("users.txt");
+    if(user_file.is_open()) {
+        while(getline(user_file, line)) {
+            user_data = split(line, ' ');
+            if(user_data.size() > 4) {
+                friends = split(user_data[4], ',');
+            }
+            if(user.username != "" && user_data[0] == user.username) {
+                user.password_hash = user_data[1];
+                user.id = user_data[2];
+                //store only friends' ids
+                for(int i = 0; i < friends.size(); i++) {
+                    user.friends[i] = new USER;
+                    user.friends[i]->id = friends[i];
                 }
-                else {
-                    user.exception = 3;
-                    //3 = user does not exist
+                user_file.close();
+                return user;
+            }
+            else if(user.id != "" && user_data[2] == user.id) {
+                user.username = user_data[0];
+                user.password_hash = user_data[1];
+                for(int i = 0; i < friends.size(); i++) {
+                    user.friends[i] = new USER;
+                    user.friends[i]->id = friends[i];
                     return user;
                 }
             }
         }
+        cout << "User does not exist" << endl;
+        user.exception = 3;
         user_file.close();
+        return user;
     }
     else {
         cout << "Unable to open file";
+        //4 = unable to open file
+        user.exception = 4;
     }
-
-    return user;
 }
 
-int user_find() {
+USER user_find() {
     string username;
+    string id;
     string line;
-    vector<string> user_data;
-    int user_index = 0;
+    USER user;
 
-    cout << "Find user: "; << endl;
+    cout << "Find user: " << endl;
     cout << "1. Search by username" << endl;
     cout << "2. Search by ID" << endl;
     cout << "3. Choose from friends" << endl;
+    cout << "4. Return to main menu" << endl;
+    cout << "Enter choice: ";
+    int choice;
+    cin >> choice;
+
+    switch(choice) {
+        case 1:
+            cout << "Enter username (type 'cancel' to go back): ";
+            cin >> username;
+            if (username == "cancel") {
+                user = user_find();
+            }
+            else {
+                user.username = username;
+                user = user_completion(user);
+            }
+            break;
+        case 2:
+            cout << "Enter ID (type 'cancel' to go back): ";
+            cin >> id;
+            if (id == "cancel") {
+                user = user_find();
+            }
+            else {
+                user.id = id;
+                user = user_completion(user);
+            }
+            break;
+        case 3:
+            //TODO
+        case 4:
+            //TODO: return to main menu
+        default:
+            cout << "Invalid choice" << endl;
+            break;
+
+    }
+    return user;
 }
 
-int send_message (USER sender, USER receiver) {
-    string message;
-    cout << "Enter message: ";
-    cin >> message;
-    MESSAGE msg;
-    msg.sender = sender.id;
-    msg.receiver = receiver.id;
-    msg.message = message;
-    msg.id = sha256(msg.sender + msg.receiver + msg.message);
+int send_message(USER sender, USER receiver) {
+    string text;
+    string line;
+    string id;
+    MESSAGE message;
 
-    fstream file("messages.txt", ios::app);
-    file << msg.sender << "," << msg.receiver << "," << msg.message << "," << msg.id << endl;
-    file.close();
+    cout << "Enter message: ";
+    //TODO: add ability to go back
+    cin >> text;
+    id = sha256(text + sender.id + receiver.id);
+    message.id = id;
+    message.sender = sender;
+    message.receiver = receiver;
+    message.text = text;
+    ofstream message_file("messages.txt");
+    if(message_file.is_open()) {
+        message_file << " " << message.sender.id << " " << message.receiver.id << " " << message.text << " " << message.id << endl;
+        message_file.close();
+        cout << "Message sent" << endl;
+    }
+    else {
+        cout << "Unable to open file";
+        return 4;
+    }
+    return 0;
+
+}
+
+int view_messages(USER user) {
+    string line;
+    vector<string> message_data;
+    MESSAGE message;
+    ifstream message_file("messages.txt");
+    if(message_file.is_open()) {
+        while(getline(message_file, line)) {
+            message_data = split(line, ' ');
+            if(message_data[1] == user.id) {
+                message.sender.id = message_data[0];
+                message.receiver.id = message_data[1];
+                message.text = message_data[2];
+                message.id = message_data[3];
+                message.sender = user_completion(message.sender);
+                message.receiver = user_completion(message.receiver);
+                cout << message.sender.username << ": " << message.text << endl;
+            }
+        }
+        message_file.close();
+    }
+    else {
+        cout << "Unable to open file";
+        return 4;
+    }
+    return 0;
 }
 
 int main_menu(USER user) {
@@ -207,11 +345,10 @@ int main_menu(USER user) {
     switch (choice) {
         case 1:
             //send message
-            send_message(user, user_find());
-            break;
+            return send_message(user, user_find());
         case 2:
             //view messages
-            break;
+            return view_messages(user);
         case 3:
             //manage friends
             break;
@@ -220,6 +357,7 @@ int main_menu(USER user) {
             break;
         case 5:
             //logout
+            main_menu(login());
             break;
         case 6:
             //exit
@@ -231,14 +369,47 @@ int main_menu(USER user) {
     }
 }
 
+int fatal_error_handler(int exception) {
+    cout << "An exception has occurred and cannot be handled. Error description is provided below" << endl;
+    switch(exception) {
+        case 1:
+            cout << "Username already exists" << endl;
+            return 1;
+        case 2:
+            cout << "Incorrect password" << endl;
+            return 2;
+        case 3:
+            cout << "User does not exist" << endl;
+            return 3;
+        case 4:
+            cout << "Unable to open file" << endl;
+            return 4;
+        case 5:
+            cout << "User already exists" << endl;
+            return 5;
+        case 6:
+            cout << "Aborted" << endl;
+            return 6;
+        default:
+            cout << "Unknown error" << endl;
+            return -1;
+    }
+}
+
 int main() {
     USER user;
+    int error;
+
     user = login();
     if (user.exception == 0) {
-        main_menu(user);
+        if (main_menu(user) != 0) {
+            error = fatal_error_handler(user.exception);
+            return error;
+        }
     }
     else {
-        cout << "Error: " << user.exception << endl;
+        error = fatal_error_handler(user.exception);
+        return error;
     }
 }
 
